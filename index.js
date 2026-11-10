@@ -8,8 +8,15 @@ const authRouter = require("./routes/authRoutes");
 
 const app = express();
 
-// Force the app to understand JSON
+// Allow JSON requests
 app.use(express.json());
+
+// Home route
+app.get("/", (req, res) => {
+    res.json({
+        message: "Travel Agency API is running"
+    });
+});
 
 // Routes
 app.use("/trips", tripRouter);
@@ -17,4 +24,4 @@ app.use("/users", userRouter);
 app.use("/reviews", reviewRouter);
 app.use("/auth", authRouter);
 
-module.exports = app;
+module.exports = { app };
