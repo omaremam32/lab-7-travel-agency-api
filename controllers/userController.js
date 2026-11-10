@@ -1,51 +1,110 @@
 const { db } = require("../db");
 
-exports.getAllUsers = async (req, res) => {
+// GET /users - retrieve all users without exposing password hashes.
+const RetrieveALLusers = async (req, res) => {
     try {
-        const [rows] = await db.query("SELECT id, name, email FROM users ORDER BY id");
-        res.json(rows);
+        const query = "SELECT ID, USERNAME, EMAIL, ROLE, MANAGER_ID FROM USERS";
+        const [users] = await db.query(query);
+
+        return res.status(200).json({
+            status: "success",
+            data: users
+        });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Retrieve users failed:", error.code);
+        return res.status(500).json({ status: "failed" });
     }
 };
 
-exports.getUserById = async (req, res) => {
+// GET /users/employees-managers - self JOIN from the lecture.
+const getEmployeesandmanagers = async (req, res) => {
     try {
-        const [rows] = await db.query(
-            "SELECT id, name, email FROM users WHERE id = ?",
+        const query = `
+            SELECT e.ID, e.USERNAME AS employee,
+                   e.MANAGER_ID, m.USERNAME AS manager
+            FROM USERS AS e
+            LEFT JOIN USERS AS m ON e.MANAGER_ID = m.ID
+            ORDER BY e.ID
+        `;
+        const [users] = await db.query(query);
+
+        return res.status(200).json({
+            status: "success",
+            data: users
+        });
+    } catch (error) {
+        console.error("Self join failed:", error.code);
+        return res.status(500).json({ status: "failed" });
+    }
+};
+
+const getUserById = async (req, res) => {
+    try {
+        const [users] = await db.query(
+            "SELECT ID, USERNAME, EMAIL, ROLE, MANAGER_ID FROM USERS WHERE ID = ?",
             [req.params.id]
         );
-        if (rows.length === 0) return res.status(404).json({ message: "User not found" });
-        res.json(rows[0]);
+        if (users.length === 0) {
+            return res.status(404).json({ message: "User not found" });
+        }
+        return res.status(200).json(users[0]);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return res.status(500).json({ message: "Could not retrieve user" });
     }
 };
 
-exports.updateUser = async (req, res) => {
-    const { name, email } = req.body;
-    if (typeof name !== "string" || !name.trim() || typeof email !== "string" || !email.includes("@")) {
-        return res.status(400).json({ message: "Valid name and email are required" });
+const updateUser = async (req, res) => {
+    const { username, email, manager_id } = req.body;
+    const manager = manager_id === undefined ? null : manager_id;
+
+    if (typeof username !== "string" || !username.trim() ||
+        typeof email !== "string" || !email.includes("@") ||
+        (manager !== null && (!Number.isInteger(manager) || manager < 1))) {
+        return res.status(400).json({ message: "Valid username, email and manager_id are required" });
     }
+    if (manager !== null && Number(req.params.id) === manager) {
+        return res.status(400).json({ message: "A user cannot be their own manager" });
+    }
+
     try {
         const [result] = await db.query(
-            "UPDATE users SET name = ?, email = ? WHERE id = ?",
-            [name.trim(), email.trim().toLowerCase(), req.params.id]
+            "UPDATE USERS SET USERNAME = ?, EMAIL = ?, MANAGER_ID = ? WHERE ID = ?",
+            [username.trim(), email.trim().toLowerCase(), manager, req.params.id]
         );
-        if (result.affectedRows === 0) return res.status(404).json({ message: "User not found" });
-        res.json({ message: "User updated" });
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: "User not found" });
+        }
+        return res.status(200).json({ message: "User updated" });
     } catch (error) {
-        if (error.code === "ER_DUP_ENTRY") return res.status(409).json({ message: "Email already exists" });
-        res.status(500).json({ message: error.message });
+        if (error.code === "ER_DUP_ENTRY") {
+            return res.status(409).json({ message: "Email already exists" });
+        }
+        if (error.code === "ER_NO_REFERENCED_ROW_2") {
+            return res.status(400).json({ message: "Manager ID does not exist" });
+        }
+        return res.status(500).json({ message: "Could not update user" });
     }
 };
 
-exports.deleteUser = async (req, res) => {
+const deleteUser = async (req, res) => {
     try {
-        const [result] = await db.query("DELETE FROM users WHERE id = ?", [req.params.id]);
-        if (result.affectedRows === 0) return res.status(404).json({ message: "User not found" });
-        res.json({ message: "User deleted" });
+        const [result] = await db.query(
+            "DELETE FROM USERS WHERE ID = ?",
+            [req.params.id]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: "User not found" });
+        }
+        return res.status(200).json({ message: "User deleted" });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return res.status(500).json({ message: "Could not delete user" });
     }
+};
+
+module.exports = {
+    RetrieveALLusers,
+    getEmployeesandmanagers,
+    getUserById,
+    updateUser,
+    deleteUser
 };
